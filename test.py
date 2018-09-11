@@ -1,7 +1,7 @@
 from azzert import azzert
 
 data = {
-    'id': 123,
+    'id': '123',
     'name': 'tom',
     'contact': {
         'type': 'mobile',
@@ -11,7 +11,7 @@ data = {
 }
 
 schema = {
-    'id': (int, str),
+    'id': (int, r'^\d+$'),
     'name': str,
     'contact': {
         'type': {'mobile', 'email'},

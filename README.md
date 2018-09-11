@@ -13,6 +13,8 @@ schema = lambda v: v > 0                        # 必须被函数返回真值
 
 schema = (int, float, str)                      # 或；可以为整数或浮点数或字符串
 
+from types import NoneType
+
 schema = (int, float, str, NoneType)            # ...还可以为空值
 
 schema = (int, float, str, NoneType, None)      # ...还可以不存在
@@ -26,6 +28,10 @@ schema = {'id': None, 'name': nameSchema}       # 不可以有id字段
 schema = [elementScheme]                        # 列表；元素为元素的schema
 
 schema = ([elementScheme], len)                 # 非空列表
+
+schema = {'a', 'b'}                             # 枚举值
+
+schema = r'^\d+$'                               # 正则表达式（pattern字符串）
 ```
 
 执行断言：
@@ -34,7 +40,7 @@ schema = ([elementScheme], len)                 # 非空列表
 from azzert import azzert
 
 data = {
-    'id': 123,
+    'id': '123',
     'name': 'tom',
     'contact': {
         'type': 'mobile',
@@ -44,7 +50,7 @@ data = {
 }
 
 schema = {
-    'id': (int, str),
+    'id': (int, '^\d+$'),
     'name': str,
     'contact': {
         'type': {'mobile', 'email'},

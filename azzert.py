@@ -39,16 +39,16 @@ def type_of(v):
 
 
 class ErrorInfo:
-    invalidSchema = 'schema is invalid'
-    wrongType = 'value type is wrong'
-    emptyValue = 'value cannot be null'
-    missingProperty = 'property is missing'
-    redundantProperty = 'property is redundant'
-    emptyList = 'list cannot be empty'
-    notList = 'value should be a list'
-    shouldNotExist = 'value should not exist'
-    notInEnumValues = 'value is not among the enum list'
-    notMatchPattern = 'value does not match the regex pattern'
+    invalidSchema       = 'schema is invalid'
+    wrongType           = 'value type is wrong'
+    emptyValue          = 'value cannot be null'
+    missingProperty     = 'property is missing'
+    redundantProperty   = 'property is redundant'
+    emptyList           = 'list cannot be empty'
+    notList             = 'value should be a list'
+    shouldNotExist      = 'value should not exist'
+    notInEnumValues     = 'value is not among the enum list'
+    notMatchPattern     = 'value does not match the regex pattern'
 
 
 AssertOptions = {

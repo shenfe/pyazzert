@@ -26,8 +26,9 @@ schema = ([elementScheme], len)  # a nonempty list
 ##################################################
 """
 
-import json
 import types
+import json
+import re as regex
 
 
 __all__ = ['azzert']
@@ -47,6 +48,7 @@ class ErrorInfo:
     notList = 'value should be a list'
     shouldNotExist = 'value should not exist'
     notInEnumValues = 'value is not among the enum list'
+    notMatchPattern = 'value does not match the regex pattern'
 
 
 AssertOptions = {
@@ -84,6 +86,13 @@ def _azzert(value, schema, options, path=''):
 
     st = type_of(schema)
 
+    if st is str:
+        if not isinstance(value, (str, unicode)):
+            return wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
+        if regex.match(schema, value):
+            return True
+        return wrap_exception(options, ErrorInfo.notMatchPattern, path, value, str(schema))
+
     if st is type:
         if type(value) is schema:
             return True
@@ -112,7 +121,11 @@ def _azzert(value, schema, options, path=''):
             return True
 
         for s in schema:  # OR
-            re = _azzert(value, s, options, path)
+            re = None
+            try:
+                re = _azzert(value, s, options, path)
+            except Exception:
+                pass
             if re is True:
                 return True
         return wrap_exception(options, ErrorInfo.wrongType, path, value)
@@ -165,40 +178,3 @@ def azzert(value, schema, options={}, **kwargs):
     opts.update(kwargs)
 
     return _azzert(value, schema, opts)
-
-
-if __name__ == '__main__':
-
-    AssertOptions['debug'] = False
-
-    id = 123
-    name = 'tom'
-    user = {'id': id, 'name': name}
-    users = [user]
-
-    try:
-        print azzert(id, int)
-        print azzert(id, None)
-        print azzert(id, True)
-        print azzert(id, (None,))
-        print azzert(id, (int, None))
-        print azzert(name, str)
-        print azzert(user, dict)
-        print azzert(user, {'id': int})
-        print azzert(user, {'id': int, 'age': int})
-        print azzert(user, {'id': int, 'name': str})
-        print azzert(users, [{'id': int, 'name': str}])
-        print azzert(users, [{'id': (True, int, lambda v: v > 0), 'name': str}])
-        user['id'] = None
-        print azzert(users, [{'id': (int, types.NoneType), 'name': (str,)}])
-        print azzert(users, [{'id': (None,), 'name': (str,)}])
-        print azzert(users, [{'id': None, 'name': (str,)}])
-        del user['id']
-        print azzert(users, [{'id': (int, None), 'name': (str,)}])
-        users = []
-        print azzert(users, [{'id': (int, None), 'name': (str,)}])
-        print azzert(users, ([{'id': (int, None), 'name': (str,)}], len))
-        users = [user]
-        print azzert(users, ([{'id': (int, None), 'name': (str,)}], len))
-    except Exception as e:
-        raise e

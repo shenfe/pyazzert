@@ -50,7 +50,7 @@ data = {
 }
 
 schema = {
-    'id': (int, '^\d+$'),
+    'id': (int, r'^\d+$'),
     'name': str,
     'contact': {
         'type': {'mobile', 'email'},

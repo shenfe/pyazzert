@@ -31,7 +31,7 @@ import json
 import re as regex
 
 
-__all__ = ['azzert']
+__all__ = ['azzert', 'ensure', 'mock', 'C', 'D', 'E']
 
 
 def type_of(v):
@@ -49,6 +49,7 @@ class ErrorInfo:
     shouldNotExist      = 'value should not exist'
     notInEnumValues     = 'value is not among the enum list'
     notMatchPattern     = 'value does not match the regex pattern'
+    exampleOnlyInMock   = 'example value is only used for mocking'
 
 
 AssertOptions = {
@@ -60,6 +61,21 @@ AssertOptions = {
 class AzzertionError(Exception):
     def __init__(self, *args):
         super(AzzertionError, self).__init__(*args)
+
+
+class C(object):
+    def __init__(self, conv):
+        self.conv = conv
+
+
+class D(object):
+    def __init__(self, value):
+        self.value = value
+
+
+class E(object):
+    def __init__(self, value):
+        self.value = value
 
 
 def wrap_exception(options, message, *args):
@@ -77,48 +93,62 @@ def is_and_schema(schema):
     return type(schema) is tuple and len(schema) > 0 and schema[0] is True
 
 
+def is_blank_str(v):
+    return isinstance(v, (str, unicode)) and v.strip() == ''
+
+
 def _azzert(value, schema, options, path=''):
+    if isinstance(schema, C):
+        try:
+            return True, schema.conv(value)
+        except Exception as e:
+            return False, e
+
+    if isinstance(schema, D):
+        return True, schema.value if value is None or is_blank_str(value) else value
+
+    if isinstance(schema, E):
+        if options['mode'] == 'mock':
+            return True, schema.value
+        return False, wrap_exception(options, ErrorInfo.exampleOnlyInMock, path)
+
     if schema is True:
-        return True
+        return True, value
 
     if schema is None:
-        return wrap_exception(options, ErrorInfo.shouldNotExist, path, value)
+        return False, wrap_exception(options, ErrorInfo.shouldNotExist, path, value)
 
     st = type_of(schema)
 
-    if st is str:
+    if st is str or st is unicode:
         if not isinstance(value, (str, unicode)):
-            return wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
+            return False, wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
         if regex.match(schema, value):
-            return True
-        return wrap_exception(options, ErrorInfo.notMatchPattern, path, value, str(schema))
+            return True, value
+        return False, wrap_exception(options, ErrorInfo.notMatchPattern, path, value, str(schema))
 
     if st is type:
         if type(value) is schema:
-            return True
-        return wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
-
-    if callable(schema):
-        re = schema(value)
-        if re:
-            return True
-        if schema is len:
-            return wrap_exception(options, ErrorInfo.emptyList, path)
-        return wrap_exception(options, ErrorInfo.wrongType, path, value, 'judged by lambda')
+            return True, value
+        return False, wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
 
     if st is set:
         if value in schema:
-            return True
-        return wrap_exception(options, ErrorInfo.notInEnumValues, path, value, list(schema))
+            return True, value
+        return False, wrap_exception(options, ErrorInfo.notInEnumValues, path, value, list(schema))
 
     if st is tuple:
         if is_and_schema(schema):  # AND
             schema = schema[1:]
+            v = value
             for s in schema:
-                re = _azzert(value, s, options, path)
-                if re is not True:
+                re = _azzert(v, s, options, path)
+                if type(re) is not tuple:
                     return re
-            return True
+                if re[0] is not True:
+                    return re
+                v = re[1]
+            return True, v
 
         for s in schema:  # OR
             re = None
@@ -126,49 +156,75 @@ def _azzert(value, schema, options, path=''):
                 re = _azzert(value, s, options, path)
             except Exception:
                 pass
-            if re is True:
-                return True
-        return wrap_exception(options, ErrorInfo.wrongType, path, value)
+            if type(re) is tuple and re[0] is True:
+                return True, re[1]
+        return False, wrap_exception(options, ErrorInfo.wrongType, path, value)
 
     if st is dict:
         if not isinstance(value, dict):
-            return wrap_exception(options, ErrorInfo.wrongType, path, value)
+            return False, wrap_exception(options, ErrorInfo.wrongType, path, value)
+
+        value2 = {}
+        v = None
 
         for k, s in schema.items():
             p = path + '.' + k
             if k not in value:
-                if s is None:
-                    continue
-                if type(s) is tuple and None in s:
-                    continue
-                return wrap_exception(options, ErrorInfo.missingProperty, p)
-            v = value[k]
+                if s is None: continue
+                if type(s) is tuple:
+                    d = filter(lambda ss: isinstance(ss, D), s)
+                    if len(d):
+                        v = d[0].value
+                    else:
+                        continue
+                else:
+                    return False, wrap_exception(options, ErrorInfo.missingProperty, p)
+            else:
+                v = value[k]
             re = _azzert(v, s, options, p)
-            if re is not True:
+            if type(re) is not tuple:
                 return re
+            if re[0] is not True:
+                return re
+
+            value2[k] = re[1]
 
         if not options['allowmore']:
             for k, v in value.items():
                 p = path + '.' + k
                 if k not in schema:
-                    return wrap_exception(options, ErrorInfo.redundantProperty, p)
+                    return False, wrap_exception(options, ErrorInfo.redundantProperty, p)
 
-        return True
+        return True, value2
 
     if st is list:
         if not isinstance(value, (list, tuple, set)):
-            return wrap_exception(options, ErrorInfo.notList, p, value)
+            return False, wrap_exception(options, ErrorInfo.notList, p, value)
+
+        value2 = []
 
         s = schema[0]
         for i, v in enumerate(value):
             p = path + '[' + str(i) + ']'
             re = _azzert(v, s, options, p)
-            if re is not True:
+            if type(re) is not tuple:
+                return re
+            if re[0] is not True:
                 return re
 
-        return True
+            value2.append(re[1])
 
-    return wrap_exception(options, ErrorInfo.invalidSchema)
+        return True, value2
+
+    if callable(schema):
+        re = schema(value)
+        if re:
+            return True, value
+        if schema is len:
+            return False, wrap_exception(options, ErrorInfo.emptyList, path)
+        return False, wrap_exception(options, ErrorInfo.wrongType, path, value, 'judged by lambda')
+
+    return False, wrap_exception(options, ErrorInfo.invalidSchema)
 
 
 def azzert(value, schema, options={}, **kwargs):
@@ -176,5 +232,89 @@ def azzert(value, schema, options={}, **kwargs):
     opts.update(AssertOptions)
     opts.update(options)
     opts.update(kwargs)
+    opts['mode'] = 'assert'
 
-    return _azzert(value, schema, opts)
+    re = _azzert(value, schema, opts)
+    return True if re[0] is True else re[1]
+
+
+def ensure(value, schema, options={}, **kwargs):
+    opts = {}
+    opts.update(AssertOptions)
+    opts.update(options)
+    opts.update(kwargs)
+    opts['debug'] = True
+    opts['mode'] = 'ensure'
+
+    re = _azzert(value, schema, opts)
+    return re[1]
+
+
+def _mock(schema, options={}):
+    st = type_of(schema)
+
+    if st is tuple:
+        for s in schema:
+            if isinstance(s, E):
+                return s.value
+        for s in schema:
+            if isinstance(s, D):
+                return s.value
+
+    if st is set:
+        for s in schema:
+            return s
+
+    if st is dict:
+        return {k: _mock(s, options) for k, s in schema.items()}
+
+    if st is list:
+        return [_mock(schema[0], options)]
+
+
+def mock(schema, options={}, **kwargs):
+    opts = {}
+    opts.update(AssertOptions)
+    opts.update(options)
+    opts.update(kwargs)
+    opts['mode'] = 'mock'
+
+    re = _mock(schema, opts)
+    return ensure(re, schema, opts)
+
+
+if __name__ == '__main__':
+
+    AssertOptions['debug'] = False
+
+    id = 123
+    name = 'tom'
+    user = {'id': id, 'name': name}
+    users = [user]
+
+    try:
+        print azzert(id, int)
+        print azzert(id, None)
+        print azzert(id, True)
+        print azzert(id, (None,))
+        print azzert(id, (int, None))
+        print azzert(name, str)
+        print azzert(user, dict)
+        print azzert(user, {'id': int})
+        print azzert(user, {'id': int, 'age': int})
+        print azzert(user, {'id': int, 'name': str})
+        print azzert(users, [{'id': int, 'name': str}])
+        print azzert(users, [{'id': (True, int, lambda v: v > 0), 'name': str}])
+        user['id'] = None
+        print azzert(users, [{'id': (int, types.NoneType), 'name': (str,)}])
+        print azzert(users, [{'id': (None,), 'name': (str,)}])
+        print azzert(users, [{'id': None, 'name': (str,)}])
+        del user['id']
+        print azzert(users, [{'id': (int, None), 'name': (str,)}])
+        users = []
+        print azzert(users, [{'id': (int, None), 'name': (str,)}])
+        print azzert(users, ([{'id': (int, None), 'name': (str,)}], len))
+        users = [user]
+        print azzert(users, ([{'id': (int, None), 'name': (str,)}], len))
+    except Exception as e:
+        raise e

@@ -1,3 +1,5 @@
+# coding: utf8
+
 from azzert import azzert
 
 data = {
@@ -20,7 +22,6 @@ schema = {
     'hobbies': ([str], None),
 }
 
-try:
-    result = azzert(data, schema)
-except Exception as e:
-    raise e
+result = azzert(data, schema)
+
+print result

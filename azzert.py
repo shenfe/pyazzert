@@ -128,7 +128,10 @@ def _azzert(value, schema, options, path=''):
         return False, wrap_exception(options, ErrorInfo.notMatchPattern, path, value, str(schema))
 
     if st is type:
-        if type(value) is schema:
+        if schema is str:
+            if isinstance(value, (str, unicode)):
+                return True, value
+        elif type(value) is schema:
             return True, value
         return False, wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
 

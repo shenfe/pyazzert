@@ -256,6 +256,8 @@ def ensure(value, schema, options={}, **kwargs):
 def _mock(schema, options={}):
     st = type_of(schema)
 
+    none_flag = 'this field can be missing'
+
     if st is tuple:
         for s in schema:
             if isinstance(s, E):
@@ -263,13 +265,25 @@ def _mock(schema, options={}):
         for s in schema:
             if isinstance(s, D):
                 return s.value
+        for s in schema:
+            if s is types.NoneType:
+                return None
+        for s in schema:
+            if s is None:
+                return none_flag
 
     if st is set:
         for s in schema:
             return s
 
     if st is dict:
-        return {k: _mock(s, options) for k, s in schema.items()}
+        re = {}
+        for k, s in schema.items():
+            v = _mock(s, options)
+            if v == none_flag:
+                continue
+            re[k] = v
+        return re
 
     if st is list:
         return [_mock(schema[0], options)]

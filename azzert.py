@@ -254,9 +254,17 @@ def ensure(value, schema, options={}, **kwargs):
 
 
 def _mock(schema, options={}):
+    none_flag = '<absent>'
+
+    if schema in [int, float]: return 0
+    if schema in [str, unicode]: return ''
+    if schema is bool: return False
+    if schema is types.NoneType: return None
+    if schema is None: return none_flag
+
     st = type_of(schema)
 
-    none_flag = 'this field can be missing'
+    uncertain_format = '<uncertain format>'
 
     if st is tuple:
         for s in schema:
@@ -266,11 +274,12 @@ def _mock(schema, options={}):
             if isinstance(s, D):
                 return s.value
         for s in schema:
-            if s is types.NoneType:
-                return None
-        for s in schema:
-            if s is None:
-                return none_flag
+            if s in [types.NoneType, None]:
+                return _mock(s, options)
+        if not is_and_schema(schema):
+            for s in schema:
+                return _mock(s, options)
+        return uncertain_format
 
     if st is set:
         for s in schema:

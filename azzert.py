@@ -145,6 +145,8 @@ def _azzert(value, schema, options, path=''):
             schema = schema[1:]
             v = value
             for s in schema:
+                if isinstance(s, E):
+                    continue
                 re = _azzert(v, s, options, path)
                 if type(re) is not tuple:
                     return re

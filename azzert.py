@@ -26,9 +26,19 @@ schema = ([elementScheme], len)  # a nonempty list
 ##################################################
 """
 
+from __future__ import print_function
+
+import sys
 import types
 import json
 import re as regex
+
+PY3 = sys.version_info[0] == 3
+
+if PY3:
+    string_types = str
+else:
+    string_types = basestring
 
 
 __all__ = ['azzert', 'ensure', 'mock', 'C', 'D', 'E']
@@ -94,7 +104,7 @@ def is_and_schema(schema):
 
 
 def is_blank_str(v):
-    return isinstance(v, (str, unicode)) and v.strip() == ''
+    return isinstance(v, string_types) and v.strip() == ''
 
 
 def _azzert(value, schema, options, path=''):
@@ -120,8 +130,8 @@ def _azzert(value, schema, options, path=''):
 
     st = type_of(schema)
 
-    if st is str or st is unicode:
-        if not isinstance(value, (str, unicode)):
+    if st is str:
+        if not isinstance(value, string_types):
             return False, wrap_exception(options, ErrorInfo.wrongType, path, value, str(schema))
         if regex.match(schema, value):
             return True, value
@@ -129,7 +139,7 @@ def _azzert(value, schema, options, path=''):
 
     if st is type:
         if schema is str:
-            if isinstance(value, (str, unicode)):
+            if isinstance(value, string_types):
                 return True, value
         elif type(value) is schema:
             return True, value
@@ -259,7 +269,7 @@ def _mock(schema, options={}):
     none_flag = '<absent>'
 
     if schema in [int, float]: return 0
-    if schema in [str, unicode]: return ''
+    if schema is str: return ''
     if schema is bool: return False
     if schema is types.NoneType: return None
     if schema is None: return none_flag
@@ -321,28 +331,28 @@ if __name__ == '__main__':
     users = [user]
 
     try:
-        print azzert(id, int)
-        print azzert(id, None)
-        print azzert(id, True)
-        print azzert(id, (None,))
-        print azzert(id, (int, None))
-        print azzert(name, str)
-        print azzert(user, dict)
-        print azzert(user, {'id': int})
-        print azzert(user, {'id': int, 'age': int})
-        print azzert(user, {'id': int, 'name': str})
-        print azzert(users, [{'id': int, 'name': str}])
-        print azzert(users, [{'id': (True, int, lambda v: v > 0), 'name': str}])
+        print(azzert(id, int))
+        print(azzert(id, None))
+        print(azzert(id, True))
+        print(azzert(id, (None,)))
+        print(azzert(id, (int, None)))
+        print(azzert(name, str))
+        print(azzert(user, dict))
+        print(azzert(user, {'id': int}))
+        print(azzert(user, {'id': int, 'age': int}))
+        print(azzert(user, {'id': int, 'name': str}))
+        print(azzert(users, [{'id': int, 'name': str}]))
+        print(azzert(users, [{'id': (True, int, lambda v: v > 0), 'name': str}]))
         user['id'] = None
-        print azzert(users, [{'id': (int, types.NoneType), 'name': (str,)}])
-        print azzert(users, [{'id': (None,), 'name': (str,)}])
-        print azzert(users, [{'id': None, 'name': (str,)}])
+        print(azzert(users, [{'id': (int, types.NoneType), 'name': (str,)}]))
+        print(azzert(users, [{'id': (None,), 'name': (str,)}]))
+        print(azzert(users, [{'id': None, 'name': (str,)}]))
         del user['id']
-        print azzert(users, [{'id': (int, None), 'name': (str,)}])
+        print(azzert(users, [{'id': (int, None), 'name': (str,)}]))
         users = []
-        print azzert(users, [{'id': (int, None), 'name': (str,)}])
-        print azzert(users, ([{'id': (int, None), 'name': (str,)}], len))
+        print(azzert(users, [{'id': (int, None), 'name': (str,)}]))
+        print(azzert(users, ([{'id': (int, None), 'name': (str,)}], len)))
         users = [user]
-        print azzert(users, ([{'id': (int, None), 'name': (str,)}], len))
+        print(azzert(users, ([{'id': (int, None), 'name': (str,)}], len)))
     except Exception as e:
         raise e

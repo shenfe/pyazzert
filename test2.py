@@ -1,6 +1,9 @@
 # coding: utf8
 
+from __future__ import print_function
+
 from azzert import azzert, ensure, mock, C, D, E
+
 
 data = {
     'id': '123',
@@ -25,12 +28,12 @@ schema = {
 
 result = azzert(data, schema)
 
-print result
+print(result)
 
 result = ensure(data, schema)
 
-print result
+print(result)
 
 result = mock(schema)
 
-print result
+print(result)

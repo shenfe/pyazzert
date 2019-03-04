@@ -1,6 +1,9 @@
 # coding: utf8
 
+from __future__ import print_function
+
 from azzert import azzert
+
 
 data = {
     'id': '123',
@@ -24,4 +27,4 @@ schema = {
 
 result = azzert(data, schema)
 
-print result
+print(result)

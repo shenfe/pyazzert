@@ -1,35 +1,34 @@
 # coding: utf8
 
 """
-################ assertion schema ################
+################################ assertion schema ################################
 
-schema = int  # a single type
+schema = int
 
-schema = lambda v: v in {0, 1}  # a judging function
+schema = lambda v: v in [0, 1]
 
-schema = (int, float, str)  # OR
+schema = (int, float, str)                          # OR
 
-schema = (int, float, str, NoneType)  # can be `null`
+schema = (int, float, str, type(None))              # can be `null` (i.e. `None` in python)
 
-schema = (int, float, str, NoneType, None)  # can be missing
+schema = (int, float, str, type(None), None)        # can be missing
 
-schema = (True, (int, float), lambda v: v >= 0)  # AND
+schema = (True, (int, float), lambda v: v >= 0)     # AND
 
-schema = {0, 1, 2}  # enum
+schema = {0, 1, 2}                                  # should be in the set
 
-schema = {'id': idSchema, 'name': nameSchema}  # a dict
+schema = {'id': idSchema, 'name': nameSchema}       # a dict
 
-schema = [elementScheme]  # a list
+schema = [elementScheme]                            # a list
 
-schema = ([elementScheme], len)  # a nonempty list
+schema = ([elementScheme], len)                     # a nonempty list
 
-##################################################
+##################################################################################
 """
 
 from __future__ import print_function
 
 import sys
-import types
 import json
 import re as regex
 
@@ -38,7 +37,7 @@ PY3 = sys.version_info[0] == 3
 if PY3:
     string_types = str
 else:
-    string_types = basestring
+    string_types = basestring  # pylint: disable=undefined-variable
 
 
 __all__ = ['azzert', 'ensure', 'mock', 'C', 'D', 'E']
@@ -62,9 +61,12 @@ class ErrorInfo:
     exampleOnlyInMock   = 'example value is only used for mocking'
 
 
+IDENTIFIER = '^[a-zA-Z_][0-9a-zA-Z_]*$'
+
 AssertOptions = {
     'debug': True,  # throw exceptions or not
     'allowmore': False,  # allow redundant properties or not
+    'dictkeypattern': 1,
 }
 
 
@@ -74,25 +76,34 @@ class AzzertionError(Exception):
 
 
 class C(object):
-    def __init__(self, conv):
-        self.conv = conv
+    '''Convert'''
+    def __init__(self, arg, *args, **kwargs):
+        self.exec = arg if callable(arg) else lambda *args, **kwargs: arg
+    def __call__(self, data, *args, **kwargs):
+        return self.exec(data)
 
 
 class D(object):
-    def __init__(self, value):
-        self.value = value
+    '''Default'''
+    def __init__(self, arg, *args, **kwargs):
+        self.exec = arg if callable(arg) else lambda *args, **kwargs: arg
+    def __call__(self, *args, **kwargs):
+        return self.exec()
 
 
 class E(object):
-    def __init__(self, value):
-        self.value = value
+    '''Example'''
+    def __init__(self, arg, *args, **kwargs):
+        self.exec = arg if callable(arg) else lambda *args, **kwargs: arg
+    def __call__(self, *args, **kwargs):
+        return self.exec()
 
 
 def wrap_exception(options, message, *args):
     if len(args):
         message += ': ' + ', '.join([str(arg)
                                      if i != 1 and isinstance(arg, (bool, int, float, str))
-                                     else json.dumps(arg)
+                                     else json.dumps(arg, ensure_ascii=False)
                                      for i, arg in enumerate(args)])
     if options['debug']:
         raise AzzertionError(message)
@@ -107,19 +118,19 @@ def is_blank_str(v):
     return isinstance(v, string_types) and v.strip() == ''
 
 
-def _azzert(value, schema, options, path=''):
+def _azzert(value, schema, options, path='', **kwargs):
     if isinstance(schema, C):
         try:
-            return True, schema.conv(value)
+            return True, schema(value)
         except Exception as e:
             return False, e
 
     if isinstance(schema, D):
-        return True, schema.value if value is None or is_blank_str(value) else value
+        return True, schema() if (value is None) or is_blank_str(value) else value
 
     if isinstance(schema, E):
         if options['mode'] == 'mock':
-            return True, schema.value
+            return True, schema()
         return False, wrap_exception(options, ErrorInfo.exampleOnlyInMock, path)
 
     if schema is True:
@@ -151,6 +162,15 @@ def _azzert(value, schema, options, path=''):
         return False, wrap_exception(options, ErrorInfo.notInEnumValues, path, value, list(schema))
 
     if st is tuple:
+
+        _d, _e = None, None
+        for s in schema:
+            if isinstance(s, D): _d = s
+            if isinstance(s, E): _e = s
+        if options['mode'] == 'mock':
+            if _d is not None: return _d()
+            if _e is not None: return _e()
+
         if is_and_schema(schema):  # AND
             schema = schema[1:]
             v = value
@@ -158,18 +178,18 @@ def _azzert(value, schema, options, path=''):
                 if isinstance(s, E):
                     continue
                 re = _azzert(v, s, options, path)
-                if type(re) is not tuple:
-                    return re
-                if re[0] is not True:
+                if not (type(re) is tuple and re[0] is True):
                     return re
                 v = re[1]
             return True, v
 
         for s in schema:  # OR
+            if isinstance(s, E):
+                continue
             re = None
             try:
                 re = _azzert(value, s, options, path)
-            except Exception:
+            except:
                 pass
             if type(re) is tuple and re[0] is True:
                 return True, re[1]
@@ -179,6 +199,45 @@ def _azzert(value, schema, options, path=''):
         if not isinstance(value, dict):
             return False, wrap_exception(options, ErrorInfo.wrongType, path, value)
 
+        opt_dictkeypattern = options.get('dictkeypattern', 0)
+        if opt_dictkeypattern:
+            value3 = {}
+            pattern_in_keys = False
+            for k, s in schema.items():
+                if not regex.match(IDENTIFIER, k):
+                    pattern_in_keys = True
+                    break
+            if pattern_in_keys:
+
+                def check_kv(k, v):
+                    for sk, sv in schema.items():
+                        p = path + '[\'' + sk + '\']'
+                        if regex.match(IDENTIFIER, sk):
+                            if k != sk:
+                                continue
+                        else:  # sk is a pattern
+                            if not regex.match(sk, k):
+                                continue
+                        re = _azzert(v, sv, options, p)
+                        if type(re) is not tuple:
+                            return re
+                        if re[0] is not True:
+                            return re
+                        value3[k] = re[1]
+
+                for k, v in value.items():
+                    re = check_kv(k, v)
+                    if k not in value3:
+                        if re is None:
+                            if not options['allowmore']:
+                                return False, wrap_exception(options, ErrorInfo.redundantProperty, path + '.' + k)
+                        else:
+                            return re
+                    else:  # (k, v) is ok
+                        pass
+
+                return True, value3
+
         value2 = {}
         v = None
 
@@ -187,9 +246,9 @@ def _azzert(value, schema, options, path=''):
             if k not in value:
                 if s is None: continue
                 if type(s) is tuple:
-                    d = filter(lambda ss: isinstance(ss, D), s)
+                    d = list(filter(lambda ss: isinstance(ss, D), s))
                     if len(d):
-                        v = d[0].value
+                        v = d[0]()
                     else:
                         continue
                 else:
@@ -204,11 +263,13 @@ def _azzert(value, schema, options, path=''):
 
             value2[k] = re[1]
 
-        if not options['allowmore']:
-            for k, v in value.items():
-                p = path + '.' + k
-                if k not in schema:
+        for k, v in value.items():
+            p = path + '.' + k
+            if k not in schema:
+                if not options['allowmore']:
                     return False, wrap_exception(options, ErrorInfo.redundantProperty, p)
+                else:
+                    value2[k] = v
 
         return True, value2
 
@@ -271,7 +332,7 @@ def _mock(schema, options={}):
     if schema in [int, float]: return 0
     if schema is str: return ''
     if schema is bool: return False
-    if schema is types.NoneType: return None
+    if schema is type(None): return None
     if schema is None: return none_flag
 
     st = type_of(schema)
@@ -280,13 +341,13 @@ def _mock(schema, options={}):
 
     if st is tuple:
         for s in schema:
-            if isinstance(s, E):
-                return s.value
-        for s in schema:
             if isinstance(s, D):
-                return s.value
+                return s()
         for s in schema:
-            if s in [types.NoneType, None]:
+            if isinstance(s, E):
+                return s()
+        for s in schema:
+            if s in [type(None), None]:
                 return _mock(s, options)
         if not is_and_schema(schema):
             for s in schema:
@@ -344,7 +405,7 @@ if __name__ == '__main__':
         print(azzert(users, [{'id': int, 'name': str}]))
         print(azzert(users, [{'id': (True, int, lambda v: v > 0), 'name': str}]))
         user['id'] = None
-        print(azzert(users, [{'id': (int, types.NoneType), 'name': (str,)}]))
+        print(azzert(users, [{'id': (int, type(None)), 'name': (str,)}]))
         print(azzert(users, [{'id': (None,), 'name': (str,)}]))
         print(azzert(users, [{'id': None, 'name': (str,)}]))
         del user['id']
@@ -354,5 +415,5 @@ if __name__ == '__main__':
         print(azzert(users, ([{'id': (int, None), 'name': (str,)}], len)))
         users = [user]
         print(azzert(users, ([{'id': (int, None), 'name': (str,)}], len)))
-    except Exception as e:
-        raise e
+    except:
+        raise

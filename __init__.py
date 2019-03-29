@@ -1,3 +1,2 @@
-# coding: utf8
 
-from azzert import *
+from .azzert import *

@@ -13,11 +13,9 @@ schema = lambda v: v > 0                        # 必须被函数返回真值
 
 schema = (int, float, str)                      # 或；可以为整数或浮点数或字符串
 
-from types import NoneType
+schema = (int, float, str, type(None))          # ...还可以为空值
 
-schema = (int, float, str, NoneType)            # ...还可以为空值
-
-schema = (int, float, str, NoneType, None)      # ...还可以不存在
+schema = (int, float, str, type(None), None)    # ...还可以不存在
 
 schema = (True, int, lambda v: v >= 0)          # 与（同“或”的区别在于必须将True作为元组首个元素）；必须为整数且大于等于0
 
@@ -27,7 +25,7 @@ schema = {'id': None, 'name': nameSchema}       # 不可以有id字段
 
 schema = [elementScheme]                        # 列表；元素为元素的schema
 
-schema = ([elementScheme], len)                 # 非空列表
+schema = (True, [elementScheme], len)           # 非空列表
 
 schema = {'a', 'b'}                             # 枚举值
 
@@ -123,7 +121,7 @@ assert data2 == {'id': 123, 'name': ''}
 
 ### 数据mock
 
-数据mock，就是根据schema中定义的示例值，生成示例数据。
+数据mock，根据schema中定义的示例值生成示例数据。
 
 ```py
 from azzert import mock, E

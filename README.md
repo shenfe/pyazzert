@@ -1,5 +1,7 @@
 # azzert
 
+> Python3开始，用原生的type annotation吧。这个适合给Python2用。
+
 数据格式检查。
 
 ## 断言
